@@ -480,3 +480,4 @@ def handle_callbacks(call):
 
 print("Бот успешно запущен!")
 bot.infinity_polling()
+
