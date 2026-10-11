@@ -7,7 +7,7 @@ import telebot
 from telebot import types
 
 TOKEN = "8623102402:AAHDwi8CbD1jZaK1qkWUiWzT81sVfMahQTA"
-ADMIN_ID = 8859654422
+ADMIN_ID = 1944824871
 CHANNEL_ID = -1003918122345
 
 DB_FILE = "bot_data.json"
@@ -18,25 +18,25 @@ user_states = {}
 pending_tracks = {}
 
 
-# --- Фейковый веб-сервер, чтобы Render не ругался на порты ---
+# --- Веб-сервер для поддержки активности Render ---
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot is alive!")
+        self.wfile.write(b"Bot is online")
 
-def run_web_server():
+def run_web():
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
 
-threading.Thread(target=run_web_server, daemon=True).start()
+threading.Thread(target=run_web, daemon=True).start()
 
 
-# --- База данных ---
+# --- База данных с сохранением ---
 def load_data():
     default_data = {
-        "users": [],
+        "users": [ADMIN_ID],
         "tracks": {
             "all": [],
             "грустное": [],
@@ -45,16 +45,16 @@ def load_data():
             "подушам": [],
             "тт2026": [],
         },
-        "lyrics": {},     # file_id: текст
-        "ratings": {},    # file_id: {"likes": [], "dislikes": []}
-        "favorites": {},  # user_id: [file_id, ...]
+        "lyrics": {},
+        "ratings": {},
+        "favorites": {},
         "track_of_day": None,
     }
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                data.setdefault("users", [])
+                data.setdefault("users", [ADMIN_ID])
                 data.setdefault("lyrics", {})
                 data.setdefault("ratings", {})
                 data.setdefault("favorites", {})
@@ -129,6 +129,7 @@ def get_admin_keyboard():
         types.InlineKeyboardButton("📊 Статистика", callback_data="admin_stats"),
         types.InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast"),
         types.InlineKeyboardButton("🌟 Задать трек дня", callback_data="admin_set_tod"),
+        types.InlineKeyboardButton("➕ Закинуть треки", callback_data="admin_add_track"),
     )
     return markup
 
@@ -144,7 +145,7 @@ def cmd_start(message):
     user_states.pop(message.chat.id, None)
     bot.send_message(
         message.chat.id,
-        "Салам! Врубай треки, ставь лайки и сохраняй в избранное 🎧",
+        "Салам! Врубай треки, выбирай жанры и сохраняй любимое в избранное 🎧",
         reply_markup=get_main_keyboard(),
     )
 
@@ -152,15 +153,20 @@ def cmd_start(message):
 @bot.message_handler(commands=["admin"])
 def cmd_admin(message):
     if message.chat.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "Доступ запрещен.")
         return
-    bot.send_message(
-        message.chat.id,
-        "🛠 <b>Панель администратора</b>",
-        parse_mode="HTML",
-        reply_markup=get_admin_keyboard(),
+
+    data = load_data()
+    tracks_count = len(data["tracks"]["all"])
+    text = (
+        f"👑 <b>Панель администратора</b>\n\n"
+        f"ID админа подтвержден: <code>{ADMIN_ID}</code>\n"
+        f"Песен в базе: <b>{tracks_count}</b> шт."
     )
+    bot.send_message(message.chat.id, text, parse_mode="HTML", reply_markup=get_admin_keyboard())
 
 
+# Перехват новых аудио из канала
 @bot.channel_post_handler(content_types=["audio"])
 def handle_channel_audio(message):
     file_id = message.audio.file_id
@@ -208,12 +214,15 @@ def handle_main_menu(message):
         bot.send_message(message.chat.id, "Главное меню:", reply_markup=get_main_keyboard())
 
     elif message.text == "📂 Выбрать жанр":
-        bot.send_message(message.chat.id, "Выбери нужный жанр:", reply_markup=get_genres_keyboard())
+        bot.send_message(message.chat.id, "Выбери жанр:", reply_markup=get_genres_keyboard())
 
     elif message.text == "🎲 Любой трек":
         all_tracks = data["tracks"]["all"]
         if not all_tracks:
-            bot.send_message(message.chat.id, "В базе пока нет треков. Закинь аудио в канал!")
+            bot.send_message(
+                message.chat.id,
+                "В базе пока нет музыки! Перешли мне треки в личку через /admin или добавь в канал.",
+            )
             return
         chosen = random.choice(all_tracks)
         idx = get_track_index(chosen, data)
@@ -222,7 +231,7 @@ def handle_main_menu(message):
     elif message.text == "🔥 Трек дня":
         tod = data.get("track_of_day")
         if not tod:
-            bot.send_message(message.chat.id, "Трек дня ещё не выбран админом через /admin!")
+            bot.send_message(message.chat.id, "Трек дня ещё не назначен админом через /admin!")
             return
         idx = get_track_index(tod, data)
         bot.send_audio(
@@ -236,9 +245,8 @@ def handle_main_menu(message):
     elif message.text == "⭐ Моё избранное":
         favs = data.get("favorites", {}).get(str(message.chat.id), [])
         if not favs:
-            bot.send_message(message.chat.id, "Твой список избранного пуст! Жми «⭐ В избранное» под треком.")
+            bot.send_message(message.chat.id, "Список избранного пуст! Жми «⭐ В избранное» под треком.")
             return
-
         bot.send_message(message.chat.id, f"У тебя {len(favs)} треков в избранном. Лови случайный:")
         fav_track = random.choice(favs)
         idx = get_track_index(fav_track, data)
@@ -265,7 +273,10 @@ def handle_genres(message):
     tracks = data["tracks"].get(cat, [])
 
     if not tracks:
-        bot.send_message(message.chat.id, f"В категории «{message.text}» пока нет треков. Добавь в канал с #{cat}!")
+        bot.send_message(
+            message.chat.id,
+            f"В категории «{message.text}» пока нет треков. Добавь их с тегом #{cat}!",
+        )
         return
 
     chosen = random.choice(tracks)
@@ -277,10 +288,46 @@ def handle_genres(message):
 def handle_inputs(message):
     state = user_states.get(message.chat.id)
 
+    # Админ загружает треки напрямую пачками
+    if state == "waiting_admin_track" and message.chat.id == ADMIN_ID:
+        if message.content_type != "audio":
+            bot.send_message(ADMIN_ID, "Отправь именно аудиофайл mp3.")
+            return
+
+        file_id = message.audio.file_id
+        raw_caption = message.caption or ""
+        caption = raw_caption.lower()
+
+        data = load_data()
+        if file_id not in data["tracks"]["all"]:
+            data["tracks"]["all"].append(file_id)
+
+        genre_tags = {
+            "#грустное": "грустное",
+            "#веселое": "веселое",
+            "#ностальгия": "ностальгия",
+            "#подушам": "подушам",
+            "#тт2026": "тт2026",
+        }
+        for tag, cat in genre_tags.items():
+            if tag in caption and file_id not in data["tracks"][cat]:
+                data["tracks"][cat].append(file_id)
+
+        if "текст:" in caption:
+            data["lyrics"][file_id] = raw_caption.split("текст:", 1)[1].strip()
+
+        save_data(data)
+        bot.send_message(
+            ADMIN_ID,
+            f"✅ Добавлен: {message.audio.title or 'Трек'}\nМожешь скидывать следующий или нажать /admin для выхода."
+        )
+        return
+
+    # Задание трека дня
     if state == "waiting_tod" and message.chat.id == ADMIN_ID:
         user_states.pop(message.chat.id, None)
         if message.content_type != "audio":
-            bot.send_message(ADMIN_ID, "Нужно было прислать аудиозапись!")
+            bot.send_message(ADMIN_ID, "Нужно было прислать аудиофайл!")
             return
 
         data = load_data()
@@ -288,9 +335,10 @@ def handle_inputs(message):
         if message.audio.file_id not in data["tracks"]["all"]:
             data["tracks"]["all"].append(message.audio.file_id)
         save_data(data)
-        bot.send_message(ADMIN_ID, "✅ Новый трек дня сохранен!")
+        bot.send_message(ADMIN_ID, "✅ Новый трек дня успешно сохранен!")
         return
 
+    # Рассылка
     if state == "waiting_broadcast" and message.chat.id == ADMIN_ID:
         user_states.pop(message.chat.id, None)
         data = load_data()
@@ -304,12 +352,13 @@ def handle_inputs(message):
                 sent += 1
             except Exception:
                 pass
-        bot.send_message(ADMIN_ID, f"Рассылка завершена! Успешно: {sent}/{len(users)}")
+        bot.send_message(ADMIN_ID, f"Рассылка завершена! Доставлено: {sent}/{len(users)}")
         return
 
+    # Предложка от пользователей
     if state == "waiting_track":
         if message.content_type != "audio":
-            bot.send_message(message.chat.id, "Пришли аудиофайл трека.")
+            bot.send_message(message.chat.id, "Пришли, пожалуйста, аудиофайл песней.")
             return
 
         user_states.pop(message.chat.id, None)
@@ -344,7 +393,6 @@ def handle_callbacks(call):
     uid = call.from_user.id
     str_uid = str(uid)
 
-    # Лайк
     if call.data.startswith("lk_"):
         idx = int(call.data.split("_")[1])
         file_id = data["tracks"]["all"][idx]
@@ -365,7 +413,6 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id)
         return
 
-    # Дизлайк
     elif call.data.startswith("dl_"):
         idx = int(call.data.split("_")[1])
         file_id = data["tracks"]["all"][idx]
@@ -386,7 +433,6 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id)
         return
 
-    # Избранное
     elif call.data.startswith("fv_"):
         idx = int(call.data.split("_")[1])
         file_id = data["tracks"]["all"][idx]
@@ -402,7 +448,6 @@ def handle_callbacks(call):
         save_data(data)
         return
 
-    # Текст песни
     elif call.data.startswith("ly_"):
         idx = int(call.data.split("_")[1])
         file_id = data["tracks"]["all"][idx]
@@ -411,11 +456,10 @@ def handle_callbacks(call):
         if lyrics:
             bot.send_message(call.message.chat.id, f"📜 <b>Текст песни:</b>\n\n{lyrics}", parse_mode="HTML")
         else:
-            bot.send_message(call.message.chat.id, "К этой песне пока нет текста. Добавь строку «Текст: ...» в описание трека в канале!")
+            bot.send_message(call.message.chat.id, "К этой песне нет текста!")
         bot.answer_callback_query(call.id)
         return
 
-    # Админка
     elif call.data == "admin_stats" and call.message.chat.id == ADMIN_ID:
         users_count = len(data.get("users", []))
         tracks = data.get("tracks", {})
@@ -442,7 +486,15 @@ def handle_callbacks(call):
         bot.send_message(ADMIN_ID, "Пришли аудиофайл трека дня:")
         bot.answer_callback_query(call.id)
 
-    # Одобрение
+    elif call.data == "admin_add_track" and call.message.chat.id == ADMIN_ID:
+        user_states[ADMIN_ID] = "waiting_admin_track"
+        bot.send_message(
+            ADMIN_ID,
+            "Кидай сюда любые треки mp3 (можно сразу пачкой или с хэштегами вроде <code>#ностальгия</code>). Они сохранятся в базе навсегда!",
+            parse_mode="HTML"
+        )
+        bot.answer_callback_query(call.id)
+
     elif call.data.startswith("ap_"):
         req_id = call.data.split("_")[1]
         track_info = pending_tracks.get(req_id)
@@ -464,7 +516,6 @@ def handle_callbacks(call):
             bot.send_message(ADMIN_ID, f"Ошибка отправки: {e}")
             bot.answer_callback_query(call.id, "Ошибка")
 
-    # Отклонение
     elif call.data.startswith("rj_"):
         req_id = call.data.split("_")[1]
         track_info = pending_tracks.get(req_id)
@@ -480,4 +531,3 @@ def handle_callbacks(call):
 
 print("Бот успешно запущен!")
 bot.infinity_polling()
-
