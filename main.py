@@ -12,6 +12,11 @@ logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = "8623102402:AAHDwi8CbD1jZaK1qkWUiWzT81sVfMahQTA"
 CHANNEL_ID = -1003918122345
 ADMIN_ID = 1944824871
+
+# Твои посты с треками в канале:
+FIRST_TRACK_ID = 70
+LAST_TRACK_ID = 108
+
 DATA_FILE = "music_bot_data.json"
 # =============================================
 
@@ -21,7 +26,6 @@ dp = Dispatcher(bot)
 
 def load_data():
     default_data = {
-        "tracks": list(range(2, 71)),  # Посты с треками вплоть до 70
         "favorites": {},               # {user_id: [msg_id, ...]}
         "likes": {},                   # {msg_id: [user_id, ...]}
         "dislikes": {},                # {msg_id: [user_id, ...]}
@@ -73,9 +77,10 @@ def get_track_inline_keyboard(msg_id: int):
 
 @dp.message_handler(commands=["start"])
 async def cmd_start(message: types.Message):
+    total_tracks = (LAST_TRACK_ID - FIRST_TRACK_ID) + 1
     await message.answer(
         f"ID админа: {ADMIN_ID}\n"
-        f"Треков в базе: {len(db['tracks'])} шт.\n\n"
+        f"Треков в базе: {total_tracks} шт.\n\n"
         "Выбирай пункт в меню ниже 👇",
         reply_markup=get_main_keyboard()
     )
@@ -83,13 +88,9 @@ async def cmd_start(message: types.Message):
 
 @dp.message_handler(lambda msg: "Любой трек" in msg.text)
 async def send_random_track(message: types.Message):
-    if not db["tracks"]:
-        await message.answer("В базе пока нет треков!")
-        return
-
-    # До 5 попыток отправить трек из канала
-    for _ in range(5):
-        rand_id = random.choice(db["tracks"])
+    # До 10 попыток переслать трек (на случай пропусков номеров)
+    for _ in range(10):
+        rand_id = random.randint(FIRST_TRACK_ID, LAST_TRACK_ID)
         try:
             await bot.copy_message(
                 chat_id=message.chat.id,
@@ -98,30 +99,27 @@ async def send_random_track(message: types.Message):
                 reply_markup=get_track_inline_keyboard(rand_id)
             )
             return
-        except Exception:
+        except Exception as e:
+            logging.warning(f"Ошибка с ID {rand_id}: {e}")
             continue
 
-    await message.answer("Не удалось быстро загрузить трек, нажми еще раз!")
+    await message.answer("Не удалось загрузить трек. Проверь, что бот назначен админом в канале Kinjoto!")
 
 
 @dp.message_handler(lambda msg: "Трек дня" in msg.text)
 async def send_track_of_the_day(message: types.Message):
-    if not db["tracks"]:
-        await message.answer("В базе пока нет треков!")
-        return
-
     today_str = str(date.today())
     totd = db.get("track_of_the_day", {})
 
     if totd.get("date") != today_str or not totd.get("msg_id"):
         totd["date"] = today_str
-        totd["msg_id"] = random.choice(db["tracks"])
+        totd["msg_id"] = random.randint(FIRST_TRACK_ID, LAST_TRACK_ID)
         db["track_of_the_day"] = totd
         save_data()
 
     track_id = totd["msg_id"]
     try:
-        await message.answer("🔥 <b>Трек дня сегодня:</b>", parse_mode="HTML")
+        await message.answer("🔥 <b>Трек дня:</b>", parse_mode="HTML")
         await bot.copy_message(
             chat_id=message.chat.id,
             from_chat_id=CHANNEL_ID,
@@ -129,7 +127,7 @@ async def send_track_of_the_day(message: types.Message):
             reply_markup=get_track_inline_keyboard(track_id)
         )
     except Exception:
-        totd["msg_id"] = random.choice(db["tracks"])
+        totd["msg_id"] = random.randint(FIRST_TRACK_ID, LAST_TRACK_ID)
         save_data()
         await bot.copy_message(
             chat_id=message.chat.id,
@@ -161,8 +159,10 @@ async def send_favorites(message: types.Message):
             continue
 
 
+# --- ПРИЕМ НОВЫХ ТРЕКОВ ОТ ТЕБЯ ---
 @dp.message_handler(content_types=[types.ContentType.AUDIO, types.ContentType.DOCUMENT])
 async def handle_track_upload(message: types.Message):
+    global LAST_TRACK_ID
     if message.from_user.id != ADMIN_ID:
         return
 
@@ -174,15 +174,14 @@ async def handle_track_upload(message: types.Message):
             audio=audio_file_id,
             caption=message.caption or ""
         )
-        if sent_msg.message_id not in db["tracks"]:
-            db["tracks"].append(sent_msg.message_id)
-            save_data()
-
-        await message.answer(f"✅ Трек добавлен в канал и базу! Всего треков: {len(db['tracks'])}")
+        LAST_TRACK_ID = max(LAST_TRACK_ID, sent_msg.message_id)
+        total_tracks = (LAST_TRACK_ID - FIRST_TRACK_ID) + 1
+        await message.answer(f"✅ Трек добавлен в канал! Всего в базе: {total_tracks} шт.")
     except Exception as e:
         await message.answer(f"❌ Ошибка отправки в канал: {e}")
 
 
+# --- РЕАКЦИИ ПОД ТРЕКОМ ---
 @dp.callback_query_handler(lambda c: c.data)
 async def process_track_actions(call: types.CallbackQuery):
     try:
@@ -234,29 +233,8 @@ async def process_track_actions(call: types.CallbackQuery):
         save_data()
 
     elif action == "lyrics":
-        await call.answer("Текст песни пока не добавлен для этого трека 📜", show_alert=True)
+        await call.answer("Текст песни пока не добавлен 📜", show_alert=True)
 
 
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)+ "\n\n✅ Опубликовано", chat_id=call.message.chat.id, message_id=call.message.message_id)
-            bot.answer_callback_query(call.id, "Опубликовано!")
-            pending_tracks.pop(req_id, None)
-        except Exception as e:
-            bot.send_message(ADMIN_ID, f"Ошибка отправки: {e}")
-            bot.answer_callback_query(call.id, "Ошибка")
-
-    elif call.data.startswith("rj_"):
-        req_id = call.data.split("_")[1]
-        track_info = pending_tracks.get(req_id)
-        if track_info:
-            try:
-                bot.send_message(track_info["user_id"], "К сожалению, трек не подошел.")
-            except Exception:
-                pass
-            pending_tracks.pop(req_id, None)
-        bot.edit_message_caption(caption=(call.message.caption or "") + "\n\n❌ Отклонено", chat_id=call.message.chat.id, message_id=call.message.message_id)
-        bot.answer_callback_query(call.id, "Отклонено")
-
-
-print("Бот успешно запущен!")
-bot.infinity_polling()
+    executor.start_polling(dp, skip_updates=True)
