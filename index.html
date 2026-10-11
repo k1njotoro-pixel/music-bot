@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Music App</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      background: radial-gradient(circle at top, #2b1055, #110726, #090314);
+      color: #fff;
+      padding: 20px;
+      min-height: 100vh;
+      text-align: center;
+    }
+    h1 {
+      font-size: 26px;
+      margin-bottom: 20px;
+      background: linear-gradient(90deg, #ff007f, #00f2fe, #f7971e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-weight: 900;
+      letter-spacing: 1px;
+    }
+    .player-card {
+      background: rgba(255, 255, 255, 0.07);
+      border-radius: 24px;
+      padding: 22px;
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+      margin-bottom: 25px;
+    }
+    .disc {
+      width: 140px;
+      height: 140px;
+      margin: 0 auto 15px;
+      border-radius: 50%;
+      background: conic-gradient(#ff007f, #7928ca, #00f2fe, #ff007f);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 25px rgba(255, 0, 127, 0.5);
+      animation: spin 6s linear infinite;
+    }
+    .disc-inner {
+      width: 50px;
+      height: 50px;
+      background: #110726;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .track-title {
+      font-size: 19px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .track-sub {
+      font-size: 13px;
+      color: #9d9db5;
+    }
+    .section-label {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #ff007f;
+      margin-bottom: 12px;
+      text-align: left;
+      font-weight: 800;
+    }
+    .genres-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .btn {
+      padding: 16px;
+      border: none;
+      border-radius: 16px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
+      transition: transform 0.1s ease;
+    }
+    .btn:active {
+      transform: scale(0.95);
+    }
+    .g-sad { background: linear-gradient(135deg, #3a7bd5, #3a6073); }
+    .g-fun { background: linear-gradient(135deg, #ff416c, #ff4b2b); }
+    .g-nost { background: linear-gradient(135deg, #f7971e, #ffd200); }
+    .g-soul { background: linear-gradient(135deg, #11998e, #38ef7d); }
+    .g-tt { background: linear-gradient(135deg, #8a2387, #e94057, #f27121); grid-column: span 2; }
+    
+    .big-btn {
+      width: 100%;
+      padding: 17px;
+      border-radius: 18px;
+      border: none;
+      font-weight: 800;
+      font-size: 16px;
+      color: #fff;
+      background: linear-gradient(90deg, #ff007f, #7928ca);
+      box-shadow: 0 8px 25px rgba(255, 0, 127, 0.4);
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔥 МУЗЫКАЛЬНЫЙ ВАЙБ</h1>
+
+  <div class="player-card">
+    <div class="disc">
+      <div class="disc-inner">🎧</div>
+    </div>
+    <div class="track-title" id="t-title">Выбери настроение</div>
+    <div class="track-sub" id="t-sub">Жми кнопку ниже, чтобы получить трек</div>
+  </div>
+
+  <div class="section-label">Жанры и категории</div>
+  <div class="genres-grid">
+    <button class="btn g-sad" onclick="send('🌧 Грустное')">🌧 Грустное</button>
+    <button class="btn g-fun" onclick="send('⚡ Веселое')">⚡ Веселое</button>
+    <button class="btn g-nost" onclick="send('📼 Ностальгия')">📼 Ностальгия</button>
+    <button class="btn g-soul" onclick="send('☕ По душам')">☕ По душам</button>
+    <button class="btn g-tt" onclick="send('🔥 ТТ 2026')">🔥 ТТ 2026</button>
+  </div>
+
+  <button class="big-btn" onclick="send('🎲 Любой трек')">🎲 Рандомный трек</button>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    function send(query) {
+      document.getElementById('t-title').innerText = query;
+      document.getElementById('t-sub').innerText = "Ищем трек...";
+      if (tg.sendData) {
+        tg.sendData(query);
+      }
+    }
+  </script>
+</body>
+</html>
